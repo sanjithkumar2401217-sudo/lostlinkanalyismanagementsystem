@@ -1,7 +1,7 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Sector } from 'recharts';
 import { ItemRecord } from '../types';
-// FIX: Replaced `sub` with `subMonths` to resolve an error where `sub` is not an exported member of `date-fns`.
+// FIX: Replaced `sub` with `subMonths` to resolve module import error. This is likely due to the version of `date-fns` used in the project.
 import { subMonths, format } from 'date-fns';
 
 interface DashboardProps {
@@ -94,13 +94,17 @@ const Dashboard: React.FC<DashboardProps> = ({ items }) => {
                                 fill="#8884d8"
                                 dataKey="value"
                                 label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                                  // FIX: Add type assertions to the label props to resolve arithmetic operation errors on unknown types.
-                                  const radius = (innerRadius as number) + ((outerRadius as number) - (innerRadius as number)) * 0.5;
-                                  const x = (cx as number) + radius * Math.cos(-(midAngle as number) * (Math.PI / 180));
-                                  const y = (cy as number) + radius * Math.sin(-(midAngle as number) * (Math.PI / 180));
+                                  // FIX: Defensively handle props to prevent runtime errors from NaN values.
+                                  const safePercent = (percent as number) || 0;
+                                  if (safePercent === 0) return null; // Don't render a label for 0%
+
+                                  const radius = ((innerRadius as number) || 0) + (((outerRadius as number) || 0) - ((innerRadius as number) || 0)) * 0.5;
+                                  const x = ((cx as number) || 0) + radius * Math.cos(-((midAngle as number) || 0) * (Math.PI / 180));
+                                  const y = ((cy as number) || 0) + radius * Math.sin(-((midAngle as number) || 0) * (Math.PI / 180));
+                                  
                                   return (
                                     <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central">
-                                      {`${((percent as number) * 100).toFixed(0)}%`}
+                                      {`${(safePercent * 100).toFixed(0)}%`}
                                     </text>
                                   );
                                 }}

@@ -5,7 +5,7 @@ import { XIcon } from './Icons';
 interface ItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (item: ItemRecord) => void;
+  onSave: (item: Omit<ItemRecord, 'id'> & { id?: string }) => void;
   itemToEdit?: ItemRecord | null;
   defaultType: ItemType;
 }
@@ -13,7 +13,6 @@ interface ItemModalProps {
 const ItemModal: React.FC<ItemModalProps> = ({ isOpen, onClose, onSave, itemToEdit, defaultType }) => {
   const getInitialState = () => {
     const baseState = {
-        // FIX: Add optional id to baseState to ensure consistent object shape for new and edited items.
         id: undefined as string | undefined,
         name: '',
         type: defaultType,
@@ -66,9 +65,8 @@ const ItemModal: React.FC<ItemModalProps> = ({ isOpen, onClose, onSave, itemToEd
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const itemToSave: ItemRecord = {
+    const itemToSave = {
       ...item,
-      id: item.id || `${item.type.charAt(0)}${Date.now()}`,
       date: new Date(item.date).toISOString(),
       ownerDetails: item.type === 'Lost' && item.ownerDetails?.registerNumber ? { ...item.ownerDetails, year: item.ownerDetails.year! } : undefined,
       handoverDetails: (item.status === 'Claimed' || item.status === 'Returned') && item.handoverDetails?.name ? item.handoverDetails : undefined,

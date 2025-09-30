@@ -12,7 +12,8 @@
     "recharts": "^3.2.1",
     "react-dom": "^19.1.1",
     "react": "^19.1.1",
-    "date-fns": "^4.1.0"
+    "date-fns": "^4.1.0",
+    "firebase": "^12.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

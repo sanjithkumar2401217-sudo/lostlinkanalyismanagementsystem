@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Page, ItemRecord, ItemType } from './types';
-import { initialItems } from './data';
+import { db } from './firebase';
+import { ref, onValue, set, remove, push, update } from 'firebase/database';
 import Dashboard from './components/Dashboard';
 import ItemsPage from './components/ItemsPage';
 import HandoverPage from './components/HandoverPage';
@@ -35,7 +36,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
 // --- App Component ---
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useLocalStorage('isAuthenticated', false);
-  const [items, setItems] = useLocalStorage<ItemRecord[]>('lostAndFoundItems', initialItems);
+  const [items, setItems] = useState<ItemRecord[]>([]);
   const [currentPage, setCurrentPage] = useState<Page>('DASHBOARD');
   const [theme, setTheme] = useLocalStorage<'light' | 'dark'>('theme', 'light');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -52,6 +53,26 @@ const App: React.FC = () => {
     }
   }, [theme]);
 
+  // Firebase data listener
+  useEffect(() => {
+    const itemsRef = ref(db, 'items/');
+    const unsubscribe = onValue(itemsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const itemsList = Object.keys(data).map(key => ({
+          id: key,
+          ...data[key]
+        }));
+        setItems(itemsList);
+      } else {
+        setItems([]);
+      }
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []);
+
   const toggleTheme = () => {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
   };
@@ -61,7 +82,7 @@ const App: React.FC = () => {
   }
 
   const findMatch = useCallback((newItem: ItemRecord) => {
-    if (newItem.status !== 'Pending') return;
+    if (newItem.status !== 'Pending' || !newItem.id) return;
 
     let potentialMatches: ItemRecord[] = [];
     if (newItem.type === 'Found') {
@@ -76,37 +97,37 @@ const App: React.FC = () => {
     );
 
     if (bestMatch) {
-      setItems(prevItems => prevItems.map(i => {
-        if (i.id === newItem.id || i.id === bestMatch.id) {
-          return { ...i, status: 'Matched', matchId: i.id === newItem.id ? bestMatch.id : newItem.id };
-        }
-        return i;
-      }));
-      // Here you could trigger a notification
+      const updates: { [key: string]: any } = {};
+      updates[`/items/${newItem.id}/status`] = 'Matched';
+      updates[`/items/${newItem.id}/matchId`] = bestMatch.id;
+      updates[`/items/${bestMatch.id}/status`] = 'Matched';
+      updates[`/items/${bestMatch.id}/matchId`] = newItem.id;
+      
+      update(ref(db), updates);
+
       alert(`Potential match found for ${newItem.name}! Item ID: ${bestMatch.id}`);
     }
-  }, [items, setItems]);
+  }, [items]);
 
 
-  const handleSaveItem = (item: ItemRecord) => {
-    setItems(prevItems => {
-      const existing = prevItems.find(i => i.id === item.id);
-      if (existing) {
-        return prevItems.map(i => i.id === item.id ? item : i);
-      }
-      return [...prevItems, item];
-    });
-    
-    if (!item.id || !items.find(i => i.id === item.id)) { // only check for match on new items
-      findMatch(item);
+  const handleSaveItem = (item: Omit<ItemRecord, 'id'> & { id?: string }) => {
+    if (item.id) { // Update existing item
+      const { id, ...itemData } = item;
+      set(ref(db, `items/${id}`), itemData);
+    } else { // Create new item
+      const { id, ...itemData } = item;
+      const newItemRef = push(ref(db, 'items'));
+      set(newItemRef, itemData).then(() => {
+        const newItemWithId = { ...itemData, id: newItemRef.key! } as ItemRecord;
+        findMatch(newItemWithId);
+      });
     }
-    
     setItemToEdit(null);
   };
   
   const handleDeleteItem = (id: string) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
-      setItems(prev => prev.filter(item => item.id !== id));
+      remove(ref(db, `items/${id}`));
     }
   };
   
@@ -135,7 +156,7 @@ const App: React.FC = () => {
       case 'DASHBOARD':
         return <Dashboard items={items} />;
       case 'ITEMS':
-        return <ItemsPage items={items} onAddItem={handleSaveItem} onUpdateItem={handleSaveItem} onDeleteItem={handleDeleteItem} openModal={openModal} />;
+        return <ItemsPage items={items} onAddItem={handleSaveItem as any} onUpdateItem={handleSaveItem as any} onDeleteItem={handleDeleteItem} openModal={openModal} />;
       case 'HANDOVER':
         return <HandoverPage items={items} openModal={openModal} />;
       default:
